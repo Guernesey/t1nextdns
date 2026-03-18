@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Temporary download / extraction data
+tmp/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
