@@ -1,60 +1,72 @@
 # UT1 Toulouse → NextDNS Blocklists
 
-Ce dépôt convertit automatiquement les catégories de blacklist UT1 (Université de Toulouse Capitole) en listes de blocage compatibles NextDNS.
+This repository automatically converts UT1 (Université Toulouse 1 Capitole) blacklist categories into NextDNS-compatible blocklists.
 
-## Contenu
+## Contents
 
-- `update_lists.py` : télécharge l’archive UT1, nettoie les domaines, génère `dist/*.txt` et `metadata.json`.
-- `dist/toulouse-<categorie>.txt` : listes prêtes à l’emploi pour NextDNS.
-- `metadata.json` : métadonnées des listes générées (URL Raw, description, nombre d’entrées).
+- `update_lists.py`: downloads the UT1 archive, cleans domain entries, and generates `dist/*.txt` plus `metadata.json`.
+- `dist/toulouse-<category>.txt`: per-category blocklists.
+- `dist/toulouse-bundle-<id>.txt`: grouped blocklists generated from multiple categories.
+- `metadata.json`: generated manifest containing published list IDs, names, descriptions, raw URLs, and entry counts.
 
-## Prérequis
+## Requirements
 
 - Python 3.10+
-- Dépendance Python : `requests`
+- Python dependency: `requests`
 
-Installation rapide :
+Quick installation:
 
 ```bash
 python -m pip install requests
 ```
 
-## Utilisation locale
+## Local Usage
 
-1. Ouvrir `update_lists.py`.
-2. Remplir `CATEGORIES_TO_PROCESS` (en haut du script), par exemple :
-
-```python
-CATEGORIES_TO_PROCESS = ["adult", "agressif", "phishing"]
-```
-
-3. (Optionnel) définir les variables d’environnement pour générer les bonnes URL Raw dans `metadata.json` :
+1. (Optional) Define environment variables to generate correct GitHub raw URLs in `metadata.json`:
 
 ```bash
-export GITHUB_OWNER="<votre-user-ou-org>"
-export GITHUB_REPO="<votre-repo>"
+export GITHUB_OWNER="<your-user-or-org>"
+export GITHUB_REPO="<your-repo>"
 export GITHUB_BRANCH="main"
 ```
 
-4. Lancer :
+2. (Optional) Create a `.env` file with grouped lists to publish in `metadata.json`:
+
+```dotenv
+Adult:adult,agressif,drogue,lingerie,sexual_education,dating,celebrity
+Actuality:press,radio,fakenews,sports
+Financial:financial,bitcoin,shopping,cryptojacking
+```
+
+- Group format: `<ListName>:<category1>,<category2>,...` (one line per list).
+- When at least one group line is present, `metadata.json` is built from grouped lists.
+- Per-category files are always generated for every available UT1 category.
+- Backward-compatible fallback: if no group lines are defined, `CATEGORIES_TO_PUSH` can still filter category-based metadata.
+
+3. Run:
 
 ```bash
 python update_lists.py
 ```
 
-## Ajouter une liste dans NextDNS
+## Add a List to NextDNS
 
-1. Ouvrir votre tableau de bord NextDNS.
-2. Aller dans **Privacy**.
-3. Dans **Add a custom filter**, coller l’URL Raw de la liste souhaitée (voir `metadata.json`).
-4. Valider l’ajout.
+1. Open your NextDNS dashboard.
+2. Go to **Privacy**.
+3. In **Add a custom filter**, paste the raw URL of the desired list (see `metadata.json`).
+4. Confirm the addition.
 
-Exemple d’URL Raw attendue :
+Expected raw URL format:
 
 ```text
-https://raw.githubusercontent.com/<owner>/<repo>/main/dist/toulouse-adult.txt
+https://raw.githubusercontent.com/<owner>/<repo>/main/dist/toulouse-bundle-adult.txt
 ```
 
-## Automatisation
+## Automation
 
-Le workflow GitHub Actions (`.github/workflows/update.yml`) exécute la mise à jour tous les lundis à 00:00 (UTC), puis commit/push automatiquement les fichiers mis à jour.
+The GitHub Actions workflow (`.github/workflows/update.yml`) runs every Monday at 00:00 (UTC), then automatically commits and pushes updated files.
+
+## License and Credits
+
+- **Source data**: The original blacklist data is provided by Université Toulouse 1 Capitole (UT1) and distributed under the **Licence Ouverte Etalab 2.0**.
+- **Repository code**: The code in this repository is released under the **MIT License**.

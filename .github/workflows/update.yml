@@ -29,6 +29,8 @@ jobs:
           GITHUB_OWNER: ${{ github.repository_owner }}
           GITHUB_REPO: ${{ github.event.repository.name }}
           GITHUB_BRANCH: ${{ github.ref_name }}
+          CATEGORIES_TO_PUSH: ${{ vars.CATEGORIES_TO_PUSH }}
+          LIST_GROUPS: ${{ vars.LIST_GROUPS }}
         run: python update_lists.py
 
       - name: Commit and push changes
