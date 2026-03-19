@@ -1,9 +1,9 @@
 {
-  "name": "Actuality",
-  "website": "https://github.com/Guernesey/t1nextdns",
+  "name": "UT1 bundle actuality",
+  "website": "https://github.com/Guernesey/utonextdns",
   "description": "Combined UT1 categories: press, radio, fakenews, sports",
   "source": {
-    "url": "https://raw.githubusercontent.com/Guernesey/t1nextdns/main/dist/toulouse-actuality.txt",
+    "url": "https://raw.githubusercontent.com/Guernesey/utonextdns/main/dist/UT1-actuality.txt",
     "format": "domains"
   }
 }

@@ -1,24 +1,24 @@
 {
   "source": "https://dsi.ut-capitole.fr/blacklists/download/blacklists.tar.gz",
-  "homepage": "https://github.com/Guernesey/t1nextdns",
-  "generated_at": "2026-03-19T09:58:17+00:00",
+  "homepage": "https://github.com/Guernesey/utonextdns",
+  "generated_at": "2026-03-19T10:22:17+00:00",
   "categories": [
     {
       "id": "actuality",
       "name": "Actuality",
       "description": "Combined UT1 categories: press, radio, fakenews, sports",
       "raw_urls": [
-        "https://raw.githubusercontent.com/Guernesey/t1nextdns/main/dist/toulouse-actuality.txt"
+        "https://raw.githubusercontent.com/Guernesey/utonextdns/main/dist/UT1-actuality.txt"
       ],
       "entries_count": 8646
     },
     {
       "id": "adult",
       "name": "Adult",
-      "description": "Combined UT1 categories: adult",
+      "description": "Combined UT1 categories: adult — Bundle split into 2 parts: ut1adult.json, ut1adult2.json. Ajoutez-les toutes.",
       "raw_urls": [
-        "https://raw.githubusercontent.com/Guernesey/t1nextdns/main/dist/toulouse-adult-1.txt",
-        "https://raw.githubusercontent.com/Guernesey/t1nextdns/main/dist/toulouse-adult-2.txt"
+        "https://raw.githubusercontent.com/Guernesey/utonextdns/main/dist/UT1-adult-1.txt",
+        "https://raw.githubusercontent.com/Guernesey/utonextdns/main/dist/UT1-adult-2.txt"
       ],
       "entries_count": 4589669
     },
@@ -27,7 +27,7 @@
       "name": "Financial",
       "description": "Combined UT1 categories: financial, bitcoin, cryptojacking",
       "raw_urls": [
-        "https://raw.githubusercontent.com/Guernesey/t1nextdns/main/dist/toulouse-financial.txt"
+        "https://raw.githubusercontent.com/Guernesey/utonextdns/main/dist/UT1-financial.txt"
       ],
       "entries_count": 17175
     },
@@ -36,7 +36,7 @@
       "name": "Sensitive",
       "description": "Combined UT1 categories: agressif, drogue, lingerie, sexual_education, dating, celebrity, mixed_adult",
       "raw_urls": [
-        "https://raw.githubusercontent.com/Guernesey/t1nextdns/main/dist/toulouse-sensitive.txt"
+        "https://raw.githubusercontent.com/Guernesey/utonextdns/main/dist/UT1-sensitive.txt"
       ],
       "entries_count": 8162
     },
@@ -45,7 +45,7 @@
       "name": "Shopping",
       "description": "Combined UT1 categories: shopping",
       "raw_urls": [
-        "https://raw.githubusercontent.com/Guernesey/t1nextdns/main/dist/toulouse-shopping.txt"
+        "https://raw.githubusercontent.com/Guernesey/utonextdns/main/dist/UT1-shopping.txt"
       ],
       "entries_count": 36963
     }
