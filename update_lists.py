@@ -27,7 +27,8 @@ METADATA_PATH = Path("metadata.json")
 ENV_PATH = Path(".env")
 GIT_AUTO_COMMIT_PUSH_ENV = "GIT_AUTO_COMMIT_PUSH"
 GIT_COMMIT_MESSAGE_ENV = "GIT_COMMIT_MESSAGE"
-MAX_BUNDLE_BYTES = 100 * 1024 * 1024
+MAX_BUNDLE_BYTES = 70 * 1024 * 1024
+FILE_PREFIX = "UT1-"
 
 DOMAIN_REGEX = re.compile(
     r"^(?=.{1,253}$)(?!-)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$",
@@ -42,7 +43,7 @@ def ensure_directories() -> None:
 
 
 def cleanup_previous_outputs() -> None:
-    for output_file in DIST_DIR.glob("toulouse-*.txt"):
+    for output_file in DIST_DIR.glob(f"{FILE_PREFIX}*.txt"):
         output_file.unlink(missing_ok=True)
     for metadata_file in Path(".").glob("ut1*.json"):
         metadata_file.unlink(missing_ok=True)
@@ -246,9 +247,17 @@ def parse_list_groups() -> list[tuple[str, list[str]]]:
     return list(groups.items())
 
 
+def category_filename(category: str) -> str:
+    return f"{FILE_PREFIX}{category}.txt"
+
+
+def bundle_filename(group_id: str) -> str:
+    return f"{FILE_PREFIX}{group_id}.txt"
+
+
 def build_header(category: str, source_url: str, generated_at: str) -> list[str]:
     return [
-        f"# Name: Toulouse UT1 - {category}",
+        f"# Name: UT1 - {category}",
         f"# Source: {source_url}",
         f"# Generated: {generated_at}",
         "",
@@ -261,7 +270,7 @@ def write_category_file(
     generated_at: str,
     output_dir: Path,
 ) -> tuple[Path, int]:
-    output_path = output_dir / f"toulouse-{category}.txt"
+    output_path = output_dir / category_filename(category)
     deduped_domains = collapse_subdomains(domains)
 
     lines = build_header(category, SOURCE_URL, generated_at)
@@ -339,13 +348,13 @@ def write_group_files(
     category_source_dir: Path,
 ) -> tuple[list[Path], int]:
     group_id = slugify_identifier(group_name)
-    base_filename = f"toulouse-{group_id}.txt"
+    base_filename = bundle_filename(group_id)
 
-    category_paths = [category_source_dir / f"toulouse-{category}.txt" for category in categories]
+    category_paths = [category_source_dir / category_filename(category) for category in categories]
     existing_paths = [path for path in category_paths if path.exists()]
 
     header_lines = [
-        f"# Name: Toulouse UT1 Bundle - {group_name}",
+        f"# Name: UT1 Bundle - {group_name}",
         f"# Source: {SOURCE_URL}",
         f"# Generated: {generated_at}",
         f"# Categories: {', '.join(categories)}",
@@ -464,21 +473,38 @@ def write_nextdns_metadata_files(metadata: dict[str, dict[str, str | int]]) -> N
 
     for category_id in sorted(metadata):
         category_data = metadata[category_id]
-        file_path = Path(f"ut1{category_id}.json")
-        sources = [
-            {
-                "url": raw_url,
-                "format": "domains",
+        raw_urls = list(category_data["raw_urls"])
+
+        bundle_name = f"UT1 bundle {category_id}"
+
+        if len(raw_urls) == 1:
+            targets = [(Path(f"ut1{category_id}.json"), raw_urls[0])]
+        else:
+            targets = [
+                (Path(f"ut1{category_id}{index}.json"), raw_url)
+                for index, raw_url in enumerate(raw_urls, start=1)
+            ]
+
+        target_names = [path.name for path, _ in targets]
+
+        for file_path, raw_url in targets:
+            other_targets = [name for name in target_names if name != file_path.name]
+            description = str(category_data["description"])
+            if other_targets:
+                description += " — Ajouter aussi " + ", ".join(other_targets)
+            payload = {
+                "name": bundle_name,
+                "website": homepage,
+                "description": description,
+                "source": {
+                    "url": raw_url,
+                    "format": "domains",
+                },
             }
-            for raw_url in category_data["raw_urls"]
-        ]
-        payload = {
-            "name": str(category_data["name"]),
-            "website": homepage,
-            "description": str(category_data["description"]),
-            "source": sources,
-        }
-        file_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            file_path.write_text(
+                json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
 
 
 def process_all_categories(output_dir: Path) -> dict[str, dict[str, str | int]]:
@@ -501,7 +527,7 @@ def process_all_categories(output_dir: Path) -> dict[str, dict[str, str | int]]:
             metadata[category] = {
                 "name": format_category_name(category),
                 "description": category_description(category),
-                "raw_urls": [build_raw_url(f"toulouse-{category}.txt")],
+                "raw_urls": [build_raw_url(category_filename(category))],
                 "entries_count": entries,
             }
 
@@ -536,9 +562,20 @@ def build_group_metadata(
             category_source_dir,
         )
         group_id = slugify_identifier(group_name)
+        description = "Combined UT1 categories: " + ", ".join(valid_categories)
+        if len(output_paths) > 1:
+            json_parts = [
+                (f"ut1{group_id}.json" if index == 1 else f"ut1{group_id}{index}.json")
+                for index in range(1, len(output_paths) + 1)
+            ]
+            description += (
+                f" — Bundle split into {len(output_paths)} parts: "
+                + ", ".join(json_parts)
+                + ". Ajoutez-les toutes."
+            )
         grouped_metadata[group_id] = {
             "name": group_name,
-            "description": "Combined UT1 categories: " + ", ".join(valid_categories),
+            "description": description,
             "raw_urls": [build_raw_url(path.name) for path in output_paths],
             "entries_count": entries_count,
         }

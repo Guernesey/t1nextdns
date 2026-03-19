@@ -2,7 +2,7 @@ name: Update UT1 NextDNS Lists
 
 on:
   schedule:
-    - cron: "0 0 * * 1"
+    - cron: "53 2 * * *"
   workflow_dispatch:
 
 permissions:
@@ -15,6 +15,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Generate .env from LIST_GROUPS
+        run: |
+          if [ -z "${{ vars.LIST_GROUPS }}" ]; then
+            echo "LIST_GROUPS repository variable is empty" >&2
+            exit 1
+          fi
+          printf '%s\n' "${{ vars.LIST_GROUPS }}" > .env
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -29,8 +37,6 @@ jobs:
           GITHUB_OWNER: ${{ github.repository_owner }}
           GITHUB_REPO: ${{ github.event.repository.name }}
           GITHUB_BRANCH: ${{ github.ref_name }}
-          CATEGORIES_TO_PUSH: ${{ vars.CATEGORIES_TO_PUSH }}
-          LIST_GROUPS: ${{ vars.LIST_GROUPS }}
         run: python update_lists.py
 
       - name: Commit and push changes
