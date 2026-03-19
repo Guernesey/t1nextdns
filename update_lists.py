@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import io
 import ipaddress
 import heapq
 import json
 import os
 import re
+import resource
+import shutil
+import subprocess
 import tarfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Iterable
@@ -16,11 +21,13 @@ import requests
 SOURCE_URL = "https://dsi.ut-capitole.fr/blacklists/download/blacklists.tar.gz"
 DIST_DIR = Path("dist")
 TMP_DIR = Path("tmp")
+CATEGORY_WORK_DIR = TMP_DIR / "categories"
 ARCHIVE_PATH = TMP_DIR / "blacklists.tar.gz"
 METADATA_PATH = Path("metadata.json")
 ENV_PATH = Path(".env")
-PUSH_CATEGORIES_ENV = "CATEGORIES_TO_PUSH"
-LIST_GROUPS_ENV = "LIST_GROUPS"
+GIT_AUTO_COMMIT_PUSH_ENV = "GIT_AUTO_COMMIT_PUSH"
+GIT_COMMIT_MESSAGE_ENV = "GIT_COMMIT_MESSAGE"
+MAX_BUNDLE_BYTES = 100 * 1024 * 1024
 
 DOMAIN_REGEX = re.compile(
     r"^(?=.{1,253}$)(?!-)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$",
@@ -31,6 +38,7 @@ DOMAIN_REGEX = re.compile(
 def ensure_directories() -> None:
     DIST_DIR.mkdir(parents=True, exist_ok=True)
     TMP_DIR.mkdir(parents=True, exist_ok=True)
+    CATEGORY_WORK_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def cleanup_previous_outputs() -> None:
@@ -64,17 +72,50 @@ def load_dotenv(path: Path) -> None:
             os.environ[key] = value
 
 
-def parse_push_categories() -> set[str] | None:
-    raw_value = os.getenv(PUSH_CATEGORIES_ENV, "").strip()
-    if not raw_value:
-        return None
+def is_truthy(value: str) -> bool:
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
-    categories = {
-        category.strip()
-        for category in raw_value.replace(";", ",").split(",")
-        if category.strip()
-    }
-    return categories or None
+
+def log(message: str) -> None:
+    timestamp = datetime.now(timezone.utc).strftime("%H:%M:%S")
+    print(f"[{timestamp}] {message}")
+
+
+def print_performance_summary(start_time: float) -> None:
+    elapsed = time.perf_counter() - start_time
+    usage = resource.getrusage(resource.RUSAGE_SELF)
+    cpu_time = usage.ru_utime + usage.ru_stime
+    max_rss_mb = usage.ru_maxrss / 1024 if os.name == "posix" else usage.ru_maxrss
+    log(
+        "Run summary: "
+        f"duration={elapsed:.2f}s, cpu_time={cpu_time:.2f}s, "
+        f"max_rss={max_rss_mb:.1f}MB"
+    )
+
+
+def run_git_commit_and_push_if_enabled() -> None:
+    if not is_truthy(os.getenv(GIT_AUTO_COMMIT_PUSH_ENV, "false")):
+        return
+
+    paths_to_add = ["dist", str(METADATA_PATH)]
+    paths_to_add.extend(sorted(str(path) for path in Path(".").glob("ut1*.json")))
+
+    log("Staging files for Git commit...")
+    subprocess.run(["git", "add", *paths_to_add], check=True)
+
+    diff_status = subprocess.run(["git", "diff", "--cached", "--quiet"], check=False)
+    if diff_status.returncode == 0:
+        log("No Git changes to commit.")
+        return
+    if diff_status.returncode != 1:
+        raise RuntimeError("Unable to determine staged Git changes.")
+
+    commit_message = os.getenv(GIT_COMMIT_MESSAGE_ENV, "chore: update UT1 NextDNS lists")
+    log(f"Committing with message: {commit_message}")
+    subprocess.run(["git", "commit", "-m", commit_message], check=True)
+    log("Pushing changes...")
+    subprocess.run(["git", "push"], check=True)
+    log("Git commit and push completed.")
 
 
 def download_archive(url: str, output_path: Path) -> None:
@@ -189,15 +230,6 @@ def parse_group_definition_line(line: str) -> tuple[str, list[str]] | None:
 def parse_list_groups() -> list[tuple[str, list[str]]]:
     groups: dict[str, list[str]] = {}
 
-    raw_groups_env = os.getenv(LIST_GROUPS_ENV, "").strip()
-    if raw_groups_env:
-        for raw_line in raw_groups_env.split("|"):
-            parsed = parse_group_definition_line(raw_line.strip())
-            if parsed is None:
-                continue
-            group_name, categories = parsed
-            groups[group_name] = categories
-
     if ENV_PATH.exists():
         for raw_line in ENV_PATH.read_text(encoding="utf-8").splitlines():
             line = raw_line.strip()
@@ -223,15 +255,20 @@ def build_header(category: str, source_url: str, generated_at: str) -> list[str]
     ]
 
 
-def write_category_file(category: str, domains: Iterable[str], generated_at: str) -> Path:
-    output_path = DIST_DIR / f"toulouse-{category}.txt"
-    sorted_domains = sorted(set(domains))
+def write_category_file(
+    category: str,
+    domains: Iterable[str],
+    generated_at: str,
+    output_dir: Path,
+) -> tuple[Path, int]:
+    output_path = output_dir / f"toulouse-{category}.txt"
+    deduped_domains = collapse_subdomains(domains)
 
     lines = build_header(category, SOURCE_URL, generated_at)
-    lines.extend(sorted_domains)
+    lines.extend(deduped_domains)
 
     output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return output_path
+    return output_path, len(deduped_domains)
 
 
 def slugify_identifier(value: str) -> str:
@@ -251,10 +288,6 @@ def build_raw_url(filename: str) -> str:
 
 
 def build_homepage_url() -> str:
-    homepage = os.getenv("HOMEPAGE", "").strip()
-    if homepage:
-        return homepage
-
     github_owner = os.getenv("GITHUB_OWNER", "your-github-username")
     github_repo = os.getenv("GITHUB_REPO", "your-repo-name")
     return f"https://github.com/{github_owner}/{github_repo}"
@@ -268,61 +301,139 @@ def category_description(category: str) -> str:
     return f"UT1 category: {format_category_name(category)}"
 
 
-def iter_domain_lines(file_handle) -> Iterable[str]:
-    for raw_line in file_handle:
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
+def iter_domain_lines(handle: io.TextIOBase) -> Iterable[str]:
+    for line in handle:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
             continue
-        yield line
+        yield stripped
 
 
-def write_group_file(group_name: str, categories: list[str], generated_at: str) -> tuple[Path, int]:
+def domain_sort_key(domain: str) -> tuple[int, str]:
+    return (domain.count("."), domain)
+
+
+def collapse_subdomains(domains: Iterable[str]) -> list[str]:
+    unique_domains = set(domains)
+    ordered = sorted(unique_domains, key=lambda domain: (domain.count("."), domain))
+
+    kept: set[str] = set()
+    for domain in ordered:
+        labels = domain.split(".")
+        skip = False
+        for i in range(1, len(labels)):
+            parent = ".".join(labels[i:])
+            if parent in kept:
+                skip = True
+                break
+        if not skip:
+            kept.add(domain)
+
+    return sorted(kept)
+
+
+def write_group_files(
+    group_name: str,
+    categories: list[str],
+    generated_at: str,
+    category_source_dir: Path,
+) -> tuple[list[Path], int]:
     group_id = slugify_identifier(group_name)
-    output_filename = f"toulouse-bundle-{group_id}.txt"
-    output_path = DIST_DIR / output_filename
+    base_filename = f"toulouse-{group_id}.txt"
 
-    category_paths = [DIST_DIR / f"toulouse-{category}.txt" for category in categories]
+    category_paths = [category_source_dir / f"toulouse-{category}.txt" for category in categories]
     existing_paths = [path for path in category_paths if path.exists()]
 
+    header_lines = [
+        f"# Name: Toulouse UT1 Bundle - {group_name}",
+        f"# Source: {SOURCE_URL}",
+        f"# Generated: {generated_at}",
+        f"# Categories: {', '.join(categories)}",
+        "",
+    ]
+    header_text = "\n".join(header_lines) + "\n"
+    header_bytes = len(header_text.encode("utf-8"))
+
     if not existing_paths:
-        header = [
-            f"# Name: Toulouse UT1 Bundle - {group_name}",
-            f"# Source: {SOURCE_URL}",
-            f"# Generated: {generated_at}",
-            f"# Categories: {', '.join(categories)}",
-            "",
-        ]
-        output_path.write_text("\n".join(header) + "\n", encoding="utf-8")
-        return output_path, 0
+        output_path = DIST_DIR / base_filename
+        output_path.write_text(header_text, encoding="utf-8")
+        return [output_path], 0
 
     handles = [path.open("r", encoding="utf-8") for path in existing_paths]
+    files: list[Path] = []
+    emitted: set[str] = set()
+
+    def start_new_chunk(index: int) -> tuple[io.TextIOWrapper, Path, int, int]:
+        if index == 1:
+            filename = base_filename
+        else:
+            filename = base_filename.replace(".txt", f"-part{index}.txt")
+        path = DIST_DIR / filename
+        handle = path.open("w", encoding="utf-8")
+        handle.write(header_text)
+        files.append(path)
+        return handle, path, header_bytes, 0
+
     try:
-        iterators = [iter_domain_lines(handle) for handle in handles]
+        iterators = [
+            ((domain_sort_key(domain), domain) for domain in iter_domain_lines(handle))
+            for handle in handles
+        ]
         merged = heapq.merge(*iterators)
 
-        lines = [
-            f"# Name: Toulouse UT1 Bundle - {group_name}",
-            f"# Source: {SOURCE_URL}",
-            f"# Generated: {generated_at}",
-            f"# Categories: {', '.join(categories)}",
-            "",
-        ]
+        chunk_index = 0
+        current_file: io.TextIOWrapper | None = None
+        current_bytes = 0
+        current_entries = 0
 
-        count = 0
-        previous = None
-        with output_path.open("w", encoding="utf-8") as output_file:
-            output_file.write("\n".join(lines) + "\n")
-            for domain in merged:
-                if domain == previous:
-                    continue
-                output_file.write(f"{domain}\n")
-                previous = domain
-                count += 1
+        for _, domain in merged:
+            if domain in emitted:
+                continue
+
+            labels = domain.split(".")
+            skip = False
+            for i in range(1, len(labels)):
+                parent = ".".join(labels[i:])
+                if parent in emitted:
+                    skip = True
+                    break
+            if skip:
+                continue
+
+            line = f"{domain}\n"
+            line_bytes = len(line.encode("utf-8"))
+
+            if current_file is None:
+                chunk_index += 1
+                current_file, _, current_bytes, current_entries = start_new_chunk(chunk_index)
+            elif current_entries > 0 and current_bytes + line_bytes > MAX_BUNDLE_BYTES:
+                current_file.close()
+                chunk_index += 1
+                current_file, _, current_bytes, current_entries = start_new_chunk(chunk_index)
+
+            current_file.write(line)
+            current_bytes += line_bytes
+            current_entries += 1
+            emitted.add(domain)
+
+        if current_file is not None:
+            current_file.close()
     finally:
         for handle in handles:
             handle.close()
 
-    return output_path, count
+    total_entries = len(emitted)
+
+    if len(files) > 1:
+        base_root = base_filename.rsplit(".txt", 1)[0]
+        renamed_files: list[Path] = []
+        for index, path in enumerate(files, start=1):
+            new_path = path.with_name(f"{base_root}-{index}.txt")
+            path.rename(new_path)
+            renamed_files.append(new_path)
+        files = renamed_files
+
+    return files, total_entries
 
 
 def generate_metadata(metadata: dict[str, dict[str, str | int]], generated_at: str) -> None:
@@ -334,7 +445,7 @@ def generate_metadata(metadata: dict[str, dict[str, str | int]], generated_at: s
                 "id": category_id,
                 "name": str(category_data["name"]),
                 "description": str(category_data["description"]),
-                "raw_url": str(category_data["raw_url"]),
+                "raw_urls": list(category_data["raw_urls"]),
                 "entries_count": int(category_data["entries_count"]),
             }
         )
@@ -354,65 +465,53 @@ def write_nextdns_metadata_files(metadata: dict[str, dict[str, str | int]]) -> N
     for category_id in sorted(metadata):
         category_data = metadata[category_id]
         file_path = Path(f"ut1{category_id}.json")
+        sources = [
+            {
+                "url": raw_url,
+                "format": "domains",
+            }
+            for raw_url in category_data["raw_urls"]
+        ]
         payload = {
             "name": str(category_data["name"]),
             "website": homepage,
             "description": str(category_data["description"]),
-            "source": {
-                "url": str(category_data["raw_url"]),
-                "format": "domains",
-            },
+            "source": sources,
         }
         file_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-def process_all_categories() -> dict[str, dict[str, str | int]]:
+def process_all_categories(output_dir: Path) -> dict[str, dict[str, str | int]]:
     metadata: dict[str, dict[str, str | int]] = {}
 
     with tarfile.open(ARCHIVE_PATH, mode="r:gz") as archive:
         categories = list_available_categories(archive)
+        log(f"Found {len(categories)} categories in archive.")
         generated_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
         for category in categories:
             member = find_domains_member(archive, category)
             if member is None:
-                print(f"domains file not found for category: {category}")
+                log(f"domains file not found for category: {category}")
                 continue
 
             domains = extract_domains_from_member(archive, member)
-            write_category_file(category, domains, generated_at)
+            _, entries = write_category_file(category, domains, generated_at, output_dir)
 
             metadata[category] = {
                 "name": format_category_name(category),
                 "description": category_description(category),
-                "raw_url": build_raw_url(f"toulouse-{category}.txt"),
-                "entries_count": len(domains),
+                "raw_urls": [build_raw_url(f"toulouse-{category}.txt")],
+                "entries_count": entries,
             }
 
     return metadata
 
 
-def filter_metadata_for_push(
-    all_metadata: dict[str, dict[str, str | int]],
-    categories_to_push: set[str] | None,
-) -> dict[str, dict[str, str | int]]:
-    if categories_to_push is None:
-        return all_metadata
-
-    filtered: dict[str, dict[str, str | int]] = {}
-    for category in sorted(categories_to_push):
-        details = all_metadata.get(category)
-        if details is None:
-            print(f"Requested category in .env not found: {category}")
-            continue
-        filtered[category] = details
-
-    return filtered
-
-
 def build_group_metadata(
     all_metadata: dict[str, dict[str, str | int]],
     groups: list[tuple[str, list[str]]],
+    category_source_dir: Path,
 ) -> dict[str, dict[str, str | int]]:
     generated_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     grouped_metadata: dict[str, dict[str, str | int]] = {}
@@ -420,22 +519,27 @@ def build_group_metadata(
     for group_name, categories in groups:
         valid_categories = [category for category in categories if category in all_metadata]
         if not valid_categories:
-            print(f"No valid categories found for group: {group_name}")
+            log(f"No valid categories found for group: {group_name}")
             continue
 
         missing_categories = sorted(set(categories) - set(valid_categories))
         if missing_categories:
-            print(
+            log(
                 f"Missing categories for group {group_name}: "
                 + ", ".join(missing_categories)
             )
 
-        output_path, entries_count = write_group_file(group_name, valid_categories, generated_at)
+        output_paths, entries_count = write_group_files(
+            group_name,
+            valid_categories,
+            generated_at,
+            category_source_dir,
+        )
         group_id = slugify_identifier(group_name)
         grouped_metadata[group_id] = {
             "name": group_name,
             "description": "Combined UT1 categories: " + ", ".join(valid_categories),
-            "raw_url": build_raw_url(output_path.name),
+            "raw_urls": [build_raw_url(path.name) for path in output_paths],
             "entries_count": entries_count,
         }
 
@@ -443,32 +547,40 @@ def build_group_metadata(
 
 
 def main() -> None:
+    start_time = time.perf_counter()
+    log("Starting UT1 → NextDNS generation...")
     ensure_directories()
     load_dotenv(ENV_PATH)
     cleanup_previous_outputs()
 
     try:
+        log("Downloading UT1 archive...")
         download_archive(SOURCE_URL, ARCHIVE_PATH)
-
-        all_metadata = process_all_categories()
         list_groups = parse_list_groups()
 
-        if list_groups:
-            metadata = build_group_metadata(all_metadata, list_groups)
-        else:
-            categories_to_push = parse_push_categories()
-            metadata = filter_metadata_for_push(all_metadata, categories_to_push)
+        if not list_groups:
+            raise RuntimeError(
+                "No grouped lists defined in .env. Please specify at least one line in the format "
+                "<ListName>:<category1>,<category2>,..."
+            )
+
+        log(f"Processing {len(list_groups)} grouped list(s)...")
+        all_metadata = process_all_categories(CATEGORY_WORK_DIR)
+        metadata = build_group_metadata(all_metadata, list_groups, CATEGORY_WORK_DIR)
 
         generated_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        log("Writing metadata files...")
         generate_metadata(metadata, generated_at)
         write_nextdns_metadata_files(metadata)
-        print(
+        run_git_commit_and_push_if_enabled()
+        log(
             "Done. "
-            f"{len(all_metadata)} dist file(s) generated, "
+            f"{len(all_metadata)} category file(s) processed, "
             f"{len(metadata)} published item(s) in metadata.json."
         )
     finally:
         cleanup_temporary_files()
+        print_performance_summary(start_time)
 
 
 if __name__ == "__main__":
