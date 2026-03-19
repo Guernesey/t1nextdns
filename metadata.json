@@ -1,0 +1,35 @@
+{
+  "source": "https://dsi.ut-capitole.fr/blacklists/download/blacklists.tar.gz",
+  "homepage": "https://github.com/Guernesey/t1nextdns",
+  "generated_at": "2026-03-19T08:17:29+00:00",
+  "categories": [
+    {
+      "id": "actuality",
+      "name": "Actuality",
+      "description": "Combined UT1 categories: press, radio, fakenews, sports",
+      "raw_url": "https://raw.githubusercontent.com/Guernesey/t1nextdns/main/dist/toulouse-bundle-actuality.txt",
+      "entries_count": 0
+    },
+    {
+      "id": "adult",
+      "name": "Adult",
+      "description": "Combined UT1 categories: adult, agressif, drogue, lingerie, sexual_education, dating, celebrity, mixed_adult",
+      "raw_url": "https://raw.githubusercontent.com/Guernesey/t1nextdns/main/dist/toulouse-bundle-adult.txt",
+      "entries_count": 0
+    },
+    {
+      "id": "financial",
+      "name": "Financial",
+      "description": "Combined UT1 categories: financial, bitcoin, cryptojacking",
+      "raw_url": "https://raw.githubusercontent.com/Guernesey/t1nextdns/main/dist/toulouse-bundle-financial.txt",
+      "entries_count": 0
+    },
+    {
+      "id": "shopping",
+      "name": "Shopping",
+      "description": "Combined UT1 categories: shopping",
+      "raw_url": "https://raw.githubusercontent.com/Guernesey/t1nextdns/main/dist/toulouse-bundle-shopping.txt",
+      "entries_count": 0
+    }
+  ]
+}

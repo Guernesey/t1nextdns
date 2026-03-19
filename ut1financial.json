@@ -1,0 +1,9 @@
+{
+  "name": "Financial",
+  "website": "https://github.com/Guernesey/t1nextdns",
+  "description": "Combined UT1 categories: financial, bitcoin, cryptojacking",
+  "source": {
+    "url": "https://raw.githubusercontent.com/Guernesey/t1nextdns/main/dist/toulouse-bundle-financial.txt",
+    "format": "domains"
+  }
+}
