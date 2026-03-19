@@ -2,8 +2,14 @@
   "name": "Adult",
   "website": "https://github.com/Guernesey/t1nextdns",
   "description": "Combined UT1 categories: adult, agressif, drogue, lingerie, sexual_education, dating, celebrity, mixed_adult",
-  "source": {
-    "url": "https://raw.githubusercontent.com/Guernesey/t1nextdns/main/dist/toulouse-bundle-adult.txt",
-    "format": "domains"
-  }
+  "source": [
+    {
+      "url": "https://raw.githubusercontent.com/Guernesey/t1nextdns/main/dist/toulouse-adult-1.txt",
+      "format": "domains"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Guernesey/t1nextdns/main/dist/toulouse-adult-2.txt",
+      "format": "domains"
+    }
+  ]
 }
