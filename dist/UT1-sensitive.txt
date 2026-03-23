@@ -1,6 +1,6 @@
 # Name: UT1 Bundle - Sensitive
 # Source: https://dsi.ut-capitole.fr/blacklists/download/blacklists.tar.gz
-# Generated: 2026-03-22T04:30:37+00:00
+# Generated: 2026-03-23T04:39:38+00:00
 # Categories: agressif, drogue, lingerie, sexual_education, dating, celebrity, mixed_adult
 
 0-24bpautomentes.hu
@@ -1159,6 +1159,7 @@ blaf.ntic.qc.ca
 comment-faire-amour.comment-faire.net
 doctissimo.fr
 femme-amour-seduction-homme.fr
+handentspannung.de
 celebrities.ninemsn.com.au
 celebritiesfans.com
 celebritieslifestyle.wordpress.com
