@@ -1,6 +1,6 @@
 # Name: UT1 Bundle - Actuality
 # Source: https://dsi.ut-capitole.fr/blacklists/download/blacklists.tar.gz
-# Generated: 2026-05-25T06:48:37+00:00
+# Generated: 2026-05-26T06:19:42+00:00
 # Categories: press, radio, fakenews, sports
 
 1-2pitch.com
